@@ -7,6 +7,16 @@
     <!-- We keep Tailwind CDN for simplicity in this setup -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Polyfill Buffer for shpjs (Shapefile parsing) to fix Vite warning -->
+    <script src="https://unpkg.com/buffer@6.0.3/index.js"></script>
+    <script>
+      if (typeof window !== 'undefined') {
+        window.Buffer = window.buffer.Buffer;
+        window.global = window; // Some legacy libs expect 'global' to exist
+      }
+    </script>
+
     <script>
       tailwind.config = {
         theme: {
