@@ -1,0 +1,5 @@
+{
+  "name": "Fuzzy Joiner",
+  "description": "Intelligent data reconciliation tool. Connect CSV, PDF, or PostGIS sources to fuzzy match, normalize, and align datasets using algorithms and Gemini AI.",
+  "requestFramePermissions": []
+}
