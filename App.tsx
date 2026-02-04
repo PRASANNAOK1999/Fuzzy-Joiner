@@ -3,7 +3,7 @@ import { StepIndicator } from './components/StepIndicator';
 import { FileUploader } from './components/FileUploader';
 import { Dataset, JoinConfig, MatchingAlgorithm, MatchResultRow, NormalizationConfig, Row } from './types';
 import { normalizeString, similarityPercentage, getPhoneticCode, exportToCSV, exportToJSON } from './utils';
-import { findSemanticMatches } from './geminiService';
+import { findSemanticMatches, isAIConfigured } from './geminiService';
 import { ArrowRight, CheckCircle2, RotateCcw, DatabaseZap, RefreshCw, GitMerge, FileOutput, Plus, Trash2, Download, TerminalSquare, Eye, ChevronDown, LayoutList, AlertCircle, Ban, ShieldCheck, Heart } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Select, Badge } from './components/ui/Components';
@@ -241,7 +241,8 @@ export default function App() {
             if (finalScore === 0) finalScore = 100; 
         } 
         
-        if (!matchFound && joinConfig.algorithms.includes(MatchingAlgorithm.AI_SEMANTIC) && keyPairs.length === 1) {
+        // AI Fallback - Check config first
+        if (!matchFound && joinConfig.algorithms.includes(MatchingAlgorithm.AI_SEMANTIC) && keyPairs.length === 1 && isAIConfigured()) {
              aiCandidates.push({ drivingVal: normalizeString(rowA[keyPairs[0].left], joinConfig.normalization), rowIndex: i, keyIndex: 0 });
         }
 
@@ -267,9 +268,37 @@ export default function App() {
         outputRows[i] = newRow;
     }
 
-    if (aiCandidates.length > 0) {
+    if (aiCandidates.length > 0 && isAIConfigured()) {
         await addLog(`Performing AI Semantic Analysis on ${aiCandidates.length} unmatched items...`);
-        // AI Logic is mocked/simplified here for the structure update
+        const uniqueDrivingVals = Array.from(new Set(aiCandidates.map(c => c.drivingVal)));
+        // We need 'lookupRefVals' here for AI. In hierarchical mode, we grab the 1st key column from Target
+        // This is a simplification for the demo since AI is complex with multi-keys
+        const targetKeyCol = joinConfig.joinKeys[0].right;
+        const lookupRefVals = lookupData.map(l => normalizeString(l[targetKeyCol], joinConfig.normalization));
+        
+        const aiMatches = await findSemanticMatches(lookupRefVals, uniqueDrivingVals);
+        
+        aiCandidates.forEach(c => {
+             const match = aiMatches.find(m => m.target === c.drivingVal);
+             if (match && match.match) {
+                 // Find the row in lookupData that corresponds to match.match
+                 // This assumes 1:1 or first match wins for AI
+                 const lookupMatch = lookupData.find(l => normalizeString(l[targetKeyCol], joinConfig.normalization) === match.match);
+                 
+                 if (lookupMatch) {
+                     const row = outputRows[c.rowIndex];
+                     row._matchStatus = 'matched';
+                     row._matchScore = match.confidence === 'High' ? 95 : 85;
+                     row._matchMethod = MatchingAlgorithm.AI_SEMANTIC;
+                     
+                     // Not tracking index usage for AI in this simplified block to avoid complexity
+                     
+                     joinConfig.targetColumns.forEach(col => {
+                        row[col] = lookupMatch[col];
+                     });
+                 }
+            }
+        });
     }
 
     await addLog("Analyzing Unmatched Target Data...");
@@ -431,18 +460,26 @@ export default function App() {
             </CardHeader>
             <CardContent className="space-y-3">
                 {[
-                    { id: MatchingAlgorithm.EXACT, label: 'Exact Match', desc: '100% equality required.' },
-                    { id: MatchingAlgorithm.LEVENSHTEIN, label: 'Fuzzy (RapidFuzz)', desc: 'Tolerance for typos.' },
-                    { id: MatchingAlgorithm.PHONETIC, label: 'Phonetic', desc: 'Sounds similar.' },
-                    { id: MatchingAlgorithm.AI_SEMANTIC, label: 'Gemini AI', desc: 'Context aware (Experimental).', badge: 'AI' },
+                    { id: MatchingAlgorithm.EXACT, label: 'Exact Match', desc: '100% equality required.', enabled: true },
+                    { id: MatchingAlgorithm.LEVENSHTEIN, label: 'Fuzzy (RapidFuzz)', desc: 'Tolerance for typos.', enabled: true },
+                    { id: MatchingAlgorithm.PHONETIC, label: 'Phonetic', desc: 'Sounds similar.', enabled: true },
+                    { 
+                      id: MatchingAlgorithm.AI_SEMANTIC, 
+                      label: 'Gemini AI', 
+                      desc: isAIConfigured() ? 'Context aware (Experimental).' : 'API Key missing (VITE_API_KEY)', 
+                      badge: 'AI',
+                      enabled: isAIConfigured()
+                    },
                 ].map((alg) => (
                     <div 
                         key={alg.id}
-                        onClick={() => toggleAlgorithm(alg.id as MatchingAlgorithm)}
-                        className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                            joinConfig.algorithms.includes(alg.id as MatchingAlgorithm) 
-                            ? 'border-blue-500 bg-blue-50' 
-                            : 'border-slate-200 hover:bg-slate-50'
+                        onClick={() => alg.enabled && toggleAlgorithm(alg.id as MatchingAlgorithm)}
+                        className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
+                            !alg.enabled 
+                                ? 'opacity-50 cursor-not-allowed border-slate-100 bg-slate-50' 
+                                : joinConfig.algorithms.includes(alg.id as MatchingAlgorithm) 
+                                    ? 'border-blue-500 bg-blue-50 cursor-pointer' 
+                                    : 'border-slate-200 hover:bg-slate-50 cursor-pointer'
                         }`}
                     >
                         <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center ${

@@ -1,23 +1,28 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { CellValue } from './types';
 
 // Initialize Gemini Client
-const apiKey = process.env.API_KEY || ''; // Accessed via safe env var
-const ai = new GoogleGenAI({ apiKey });
+// Vercel/Vite uses import.meta.env.VITE_API_KEY. 
+// We handle the case where it's missing (Deployment without AI).
+const apiKey = (import.meta as any).env?.VITE_API_KEY || ''; 
+
+// Only initialize the client if the key exists to prevent runtime errors
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+export const isAIConfigured = () => !!apiKey;
 
 export const findSemanticMatches = async (
   referenceValues: string[],
   targetValues: string[]
 ): Promise<Array<{ target: string; match: string; confidence: string }>> => {
   
-  if (!apiKey) {
-    console.error("API Key not found");
-    // Return empty matches if no key (or handle gracefully in UI)
+  // 1. Graceful Exit if no API Key
+  if (!ai || !apiKey) {
+    console.warn("Gemini AI is not configured. Skipping semantic matching.");
+    // Return empty matches or identity matches to prevent app crash
     return targetValues.map(t => ({ target: t, match: '', confidence: 'Low' }));
   }
 
   // To avoid token limits and ensure speed, we batch requests if lists are long.
-  // For this demo, we'll take the top 20 distinct values to demonstrate.
   const uniqueRefs = Array.from(new Set(referenceValues)).slice(0, 50);
   const uniqueTargets = Array.from(new Set(targetValues)).slice(0, 20);
 
@@ -52,7 +57,7 @@ export const findSemanticMatches = async (
             properties: {
               target: { type: Type.STRING },
               match: { type: Type.STRING, nullable: true },
-              confidence: { type: Type.STRING } // Enums not strictly enforced in basic schema gen yet, stick to string
+              confidence: { type: Type.STRING }
             },
             required: ["target", "confidence"]
           }
