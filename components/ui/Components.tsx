@@ -84,7 +84,7 @@ export const Input = ({ className = '', ...props }: React.InputHTMLAttributes<HT
 );
 
 // --- Badge ---
-export const Badge = ({ children, variant = 'default' }: { children: React.ReactNode, variant?: 'default' | 'outline' | 'success' | 'warning' }) => {
+export const Badge = ({ children, variant = 'default', className = '' }: { children: React.ReactNode, variant?: 'default' | 'outline' | 'success' | 'warning', className?: string }) => {
   const styles = {
     default: "bg-slate-900 text-white",
     outline: "text-slate-900 border border-slate-200",
@@ -92,7 +92,7 @@ export const Badge = ({ children, variant = 'default' }: { children: React.React
     warning: "bg-amber-100 text-amber-700 border border-amber-200",
   };
   return (
-    <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${styles[variant]} border-transparent`}>
+    <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${styles[variant]} border-transparent ${className}`}>
       {children}
     </div>
   );

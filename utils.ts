@@ -214,77 +214,29 @@ export const exportToJSON = (data: any[], filename: string) => {
 
 
 // --- Mocks ---
+// Removed simplified mocks as requested. Only generic fallbacks remain.
 
-export const MOCK_SCHEMAS = ['public', 'analytics', 'spatial_data', 'legacy_imports'];
-export const MOCK_TABLES: Record<string, string[]> = {
-  'public': ['customers', 'orders', 'products'],
-  'analytics': ['monthly_sales', 'churn_prediction'],
-  'spatial_data': ['districts', 'zip_codes', 'parcels'],
-  'legacy_imports': ['raw_crm_dump', 'old_leads']
-};
+export const MOCK_SCHEMAS = ['public']; 
+export const MOCK_TABLES: Record<string, string[]> = {};
 
 export const generateMockData = (type: string, schema?: string, table?: string): Dataset => {
-  let columns: ColumnDef[] = [];
-  let data: any[] = [];
-  let rowCount = 0;
-  let size = '0 KB';
-
-  if (type === 'postgis') {
-    // Generate varied data based on table name context
-    if (table === 'districts') {
-      columns = [
-        { name: 'district_id', type: 'number' },
-        { name: 'district_name', type: 'text' }, // Join Key Candidate
-        { name: 'region_code', type: 'text' },
-        { name: 'geometry', type: 'geometry' }
-      ];
-      data = [
-        { id: '1', district_id: 101, district_name: 'Downtown', region_code: 'DT-01', geometry: 'POLYGON(...)' },
-        { id: '2', district_id: 102, district_name: 'West Side', region_code: 'WS-02', geometry: 'POLYGON(...)' },
-        { id: '3', district_id: 103, district_name: 'North Hills', region_code: 'NH-99', geometry: 'POLYGON(...)' },
-      ];
-      rowCount = 2450;
-      size = '4.2 MB';
-    } else {
-      // Generic Mock
-      columns = [
-        { name: 'id', type: 'number' },
-        { name: 'name', type: 'text' },
-        { name: 'created_at', type: 'date' },
-        { name: 'is_active', type: 'boolean' }
-      ];
-      data = Array.from({ length: 5 }).map((_, i) => ({
-        id: `pg-${i}`,
-        id_col: i + 1,
-        name: `Item ${i + 1}`,
-        created_at: '2023-01-01',
-        is_active: i % 2 === 0
-      }));
-      rowCount = 15000;
-      size = '12 MB';
-    }
-  } else {
-    // PDF/Generic
-    columns = [
-        { name: 'ID', type: 'text' },
-        { name: 'Company Name', type: 'text' },
-        { name: 'City', type: 'text' },
-        { name: 'Revenue', type: 'number' }
-    ];
-    data = [
-        { id: '1', 'ID': 'C001', 'Company Name': 'Acme Corp', 'City': 'New York', 'Revenue': '1000000' },
-        { id: '2', 'ID': 'C002', 'Company Name': 'Globex', 'City': 'SF', 'Revenue': '2500000' },
-    ];
-    rowCount = 2;
-    size = '15 KB';
-  }
+  // Generic Fallback only
+  const columns = [
+      { name: 'ID', type: 'text' as DataType },
+      { name: 'Sample Name', type: 'text' as DataType },
+      { name: 'Date', type: 'date' as DataType }
+  ];
+  const data = [
+      { id: '1', 'ID': '001', 'Sample Name': 'Test Row 1', 'Date': '2023-01-01' },
+      { id: '2', 'ID': '002', 'Sample Name': 'Test Row 2', 'Date': '2023-01-02' },
+  ];
 
   return { 
-    name: table || 'Uploaded File', 
+    name: table || 'Sample Data', 
     type: type as any, 
     columns, 
     data, 
-    rowCount,
-    size 
+    rowCount: 2,
+    size: '1 KB' 
   };
 };
