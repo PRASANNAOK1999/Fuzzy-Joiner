@@ -1,4 +1,4 @@
-export type CellValue = string | number | null;
+export type CellValue = string | number | boolean | null | undefined;
 
 export interface Row {
   [key: string]: CellValue;
