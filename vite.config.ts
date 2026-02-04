@@ -6,8 +6,8 @@ export default defineConfig({
   resolve: {
     alias: {
       // Alias 'buffer' to our local shim file.
-      // This stops Vite from complaining about the missing Node.js 'buffer' module.
-      buffer: '/buffer-shim.ts',
+      // We use ./ to ensure it resolves relative to this config file.
+      buffer: './buffer-shim.ts',
     },
   },
   build: {
@@ -15,9 +15,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          // Split code into smaller chunks to fix the "Chunk size > 500kB" warning
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-ui': ['lucide-react', 'recharts'],
+          // Combine core React and UI libraries to avoid circular dependencies
+          'vendor-core': ['react', 'react-dom', 'lucide-react', 'recharts'],
           'vendor-utils': ['xlsx', 'shpjs'],
           'vendor-ai': ['@google/genai'],
         }
