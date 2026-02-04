@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Database, Loader2, Server, HelpCircle, Wifi, WifiOff, AlertCircle, CheckCircle2, Play, Terminal, Settings, FileWarning, Shield, Globe, Laptop, Info, ArrowRight } from 'lucide-react';
+import { Upload, Database, Loader2, Server, HelpCircle, Wifi, WifiOff, AlertCircle, CheckCircle2, Play, Terminal, Settings, FileWarning, Shield, Globe, Laptop, Info, ArrowRight, ShieldAlert, Radio } from 'lucide-react';
 import { parseCSV, parseExcel, parseShapefile } from '../utils';
 import { Dataset } from '../types';
 import { Card, Button, Input, Select, Badge } from './ui/Components';
@@ -26,21 +26,23 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
   // Connection Mode
   const [bridgeMode, setBridgeMode] = useState<'local' | 'remote'>('local');
   const [showBridgeScript, setShowBridgeScript] = useState(false);
-  const [bridgeUrl, setBridgeUrl] = useState('http://localhost:3001');
+  // Default to 127.0.0.1 as it is often treated as a secure context by browsers, unlike localhost
+  const [bridgeUrl, setBridgeUrl] = useState('http://127.0.0.1:3001');
   
   const [statusMsg, setStatusMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [connectionErrorType, setConnectionErrorType] = useState<'none' | 'bridge_unreachable' | 'auth_failed' | 'mixed_content' | 'file_too_large'>('none');
+  const [connectionErrorType, setConnectionErrorType] = useState<'none' | 'bridge_unreachable' | 'auth_failed' | 'mixed_content' | 'file_too_large' | 'ssl_error'>('none');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Default to empty strings as requested
+  // Default SSL to false for localhost ease-of-use
+  // Pre-filled with user credentials for convenience
   const [dbConfig, setDbConfig] = useState({ 
-    host: '', 
-    port: '', // We will default this to 5432 on send if empty
-    db: '', 
-    user: '', 
-    password: '',
-    ssl: true 
+    host: 'localhost', 
+    port: '5432', 
+    db: 'gisvm', 
+    user: 'postgres', 
+    password: 'postgres',
+    ssl: false 
   });
 
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
@@ -48,9 +50,9 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
   // Update bridge URL when mode changes
   useEffect(() => {
     if (bridgeMode === 'local') {
-        setBridgeUrl('http://localhost:3001');
+        setBridgeUrl('http://127.0.0.1:3001');
     } else {
-        if (bridgeUrl === 'http://localhost:3001') {
+        if (bridgeUrl === 'http://127.0.0.1:3001' || bridgeUrl === 'http://localhost:3001') {
             setBridgeUrl(''); 
         }
     }
@@ -100,6 +102,28 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
     }
   };
 
+  const checkNetworkOnly = async () => {
+      setErrorMsg('');
+      setConnectionErrorType('none');
+      setStatusMsg('Pinging Bridge...');
+      try {
+          // Try a simple GET first (the root route we added)
+          const res = await fetch(bridgeUrl, { method: 'GET' });
+          if (res.ok) {
+              const text = await res.text();
+              alert(`Success! Bridge responded: "${text}"`);
+              setStatusMsg('');
+          } else {
+              throw new Error(`Bridge returned status ${res.status}`);
+          }
+      } catch (e: any) {
+          console.error(e);
+          setConnectionErrorType('bridge_unreachable');
+          setErrorMsg(`Network Test Failed: ${e.message}. The browser cannot reach ${bridgeUrl}.`);
+          setStatusMsg('');
+      }
+  };
+
   const testBridgeConnection = async (url: string) => {
     try {
         const res = await fetch(`${url}/api/connect`, { 
@@ -141,10 +165,9 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
         return;
     }
 
-    if (isHttps && activeUrl.startsWith('http://') && !activeUrl.includes('ngrok') && !activeUrl.includes('localhost') && !activeUrl.includes('127.0.0.1')) {
-        setConnectionErrorType('mixed_content');
-        setIsLoading(false);
-        return;
+    if (isHttps && activeUrl.startsWith('http://') && !activeUrl.includes('ngrok') && !activeUrl.includes('127.0.0.1')) {
+        // Warning but try anyway
+        console.warn("Mixed Content Warning: Connecting from HTTPS to HTTP.");
     }
 
     try {
@@ -152,12 +175,22 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
         setStatusMsg(`Contacting Bridge at ${activeUrl}...`);
         let isAlive = await testBridgeConnection(activeUrl);
 
-        if (!isAlive && bridgeMode === 'local' && activeUrl.includes('localhost')) {
-            setStatusMsg('Retrying with 127.0.0.1...');
-            const fallbackUrl = activeUrl.replace('localhost', '127.0.0.1');
-            if (await testBridgeConnection(fallbackUrl)) {
-                setBridgeUrl(fallbackUrl);
-                isAlive = true;
+        if (!isAlive && bridgeMode === 'local') {
+            // Try localhost if 127.0.0.1 failed
+            if (activeUrl.includes('127.0.0.1')) {
+                 setStatusMsg('Retrying with localhost...');
+                 const fallbackUrl = activeUrl.replace('127.0.0.1', 'localhost');
+                 if (await testBridgeConnection(fallbackUrl)) {
+                     setBridgeUrl(fallbackUrl);
+                     isAlive = true;
+                 }
+            } else if (activeUrl.includes('localhost')) {
+                 setStatusMsg('Retrying with 127.0.0.1...');
+                 const fallbackUrl = activeUrl.replace('localhost', '127.0.0.1');
+                 if (await testBridgeConnection(fallbackUrl)) {
+                     setBridgeUrl(fallbackUrl);
+                     isAlive = true;
+                 }
             }
         }
 
@@ -176,7 +209,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
         // Handle non-JSON responses (like 500 HTML errors)
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-            throw new Error(`Server returned invalid response (${res.status}). Check server logs.`);
+            throw new Error(`Bridge Server Error (${res.status}). Check terminal logs.`);
         }
 
         const json = await res.json();
@@ -200,12 +233,24 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
                  setConnectionErrorType('auth_failed');
              }
         } else {
-            setErrorMsg('Database refused connection: ' + (json.error || 'Check credentials'));
-            setConnectionErrorType('auth_failed');
+            const err = json.error || 'Unknown Error';
+            // Check for common SSL errors
+            if (err.includes('SSL') || err.includes('no pg_hba.conf entry')) {
+                 setConnectionErrorType('ssl_error');
+                 setErrorMsg(`SSL/Auth Error: ${err}`);
+            } else {
+                 setConnectionErrorType('auth_failed');
+                 setErrorMsg(`Database Error: ${err}`);
+            }
         }
     } catch (e: any) {
-        if (e.message === 'BRIDGE_UNREACHABLE') {
+        console.error("Connection Error:", e);
+        if (e.message === 'BRIDGE_UNREACHABLE' || e.message === 'Failed to fetch') {
             setConnectionErrorType('bridge_unreachable');
+            // If we are on HTTPS, assume it's mixed content if it failed to fetch
+            if (isHttps && activeUrl.startsWith('http://')) {
+                setConnectionErrorType('mixed_content');
+            }
             if (bridgeMode === 'local') setShowBridgeScript(true);
         } else {
             setErrorMsg(e.message);
@@ -371,7 +416,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
                     {bridgeMode === 'local' ? (
                         <>
                             <p className="text-xs text-blue-800 leading-relaxed mb-3">
-                                Connects via <code>http://localhost:3001</code> running on your machine.
+                                Connects via <code>{bridgeUrl}</code> running on your machine.
                             </p>
                             <div className="flex items-center gap-2">
                                 <button 
@@ -409,12 +454,15 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
                         <div className="space-y-3 pt-2">
                              <div className="flex items-center justify-between">
                                 <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Database Credentials</h4>
+                                <button onClick={checkNetworkOnly} className="text-[10px] text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded border border-blue-100">
+                                    Test Network Only
+                                </button>
                              </div>
                             
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="col-span-2">
                                     <label className="text-xs text-slate-500 mb-1 block">Host</label>
-                                    <Input placeholder="Enter Host (e.g. database.aws.com)" value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} />
+                                    <Input placeholder="localhost" value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} />
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-3">
@@ -430,7 +478,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-xs text-slate-500 mb-1 block">User</label>
-                                    <Input placeholder="Enter Username" value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} />
+                                    <Input placeholder="postgres" value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} />
                                 </div>
                                 <div>
                                     <label className="text-xs text-slate-500 mb-1 block">Password</label>
@@ -447,7 +495,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
                                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                                 />
                                 <label htmlFor="ssl-check" className="text-xs text-slate-700 flex items-center gap-1 cursor-pointer">
-                                    <Shield size={12} className="text-green-600" /> Enable SSL (Required for AWS RDS)
+                                    <Shield size={12} className="text-green-600" /> Enable SSL (Uncheck for Localhost)
                                 </label>
                             </div>
                         </div>
@@ -468,12 +516,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
                                     <div>
                                         <h4 className="text-sm font-bold text-amber-900">Security Warning (Mixed Content)</h4>
                                         <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                                            This website is running on <strong>HTTPS</strong>, but your Bridge is on <strong>HTTP</strong> (localhost).
+                                            This website is running on <strong>HTTPS</strong>, but your Bridge is on <strong>HTTP</strong> (localhost/127.0.0.1).
                                         </p>
                                         <p className="text-xs text-amber-800 mt-2 font-semibold">Solutions:</p>
                                         <ul className="list-disc ml-4 mt-1 text-xs text-amber-800">
                                             <li>Use the "Live / Remote" switch and paste an <strong>https://</strong> ngrok URL.</li>
-                                            <li>Or run this app locally on http://localhost:3000.</li>
+                                            <li>Or run this app locally using <code>npm run dev</code> on http://localhost:5173.</li>
+                                            <li>Try using a different browser (Chrome often allows localhost mixed content, Safari does not).</li>
                                         </ul>
                                     </div>
                                 </div>
@@ -487,19 +536,18 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
                                         <Laptop size={18} className="text-red-600" />
                                     </div>
                                     <div className="w-full">
-                                        <h4 className="text-sm font-bold text-red-900">Helper App Not Running</h4>
+                                        <h4 className="text-sm font-bold text-red-900">Helper App Not Reachable</h4>
                                         <p className="text-xs text-red-800 mt-1 leading-relaxed">
-                                            The browser cannot connect to the database directly. You must start the bridge script in your terminal first.
+                                            The browser cannot connect to {bridgeUrl}.
                                         </p>
                                         
                                         {bridgeMode === 'local' ? (
                                            <div className="mt-3 bg-white/50 rounded p-2 text-xs border border-red-100">
-                                               <p className="font-semibold text-red-900 mb-1">Quick Fix:</p>
+                                               <p className="font-semibold text-red-900 mb-1">Checklist:</p>
                                                <ol className="list-decimal ml-4 space-y-1 text-red-800">
-                                                   <li>Click <strong>"Get Bridge Script"</strong> above to see the code.</li>
-                                                   <li>Download <code>server.js</code>.</li>
-                                                   <li>Run <code>npm install express cors pg</code>.</li>
-                                                   <li>Run <code>node server.js</code>.</li>
+                                                   <li>Is the terminal window running <code>node server.js</code> open?</li>
+                                                   <li>Does the terminal say "Bridge running on http://localhost:3001"?</li>
+                                                   <li>If on HTTPS (Web), does your browser block "insecure content"?</li>
                                                </ol>
                                            </div>
                                         ) : (
@@ -510,6 +558,32 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, datase
                                             <Button size="sm" variant="outline" onClick={handleConnect} className="w-full border-red-200 hover:bg-red-50 text-red-900">
                                                 <RotateCcw size={14} className="mr-1"/> Retry Connection
                                             </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                         {connectionErrorType === 'ssl_error' && (
+                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-md animate-in fade-in slide-in-from-top-2">
+                                <div className="flex items-start gap-3">
+                                    <div className="bg-amber-100 p-2 rounded-full shrink-0">
+                                        <ShieldAlert size={18} className="text-amber-600" />
+                                    </div>
+                                    <div className="w-full">
+                                        <h4 className="text-sm font-bold text-amber-900">SSL / Auth Mismatch</h4>
+                                        <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                                            The database rejected the connection.
+                                        </p>
+                                        
+                                        <ul className="list-disc ml-4 mt-2 text-xs text-amber-800 space-y-1">
+                                            <li>If using <strong>localhost</strong>, ensure "Enable SSL" is <strong>UNCHECKED</strong>.</li>
+                                            <li>If using <strong>AWS RDS</strong>, ensure "Enable SSL" is <strong>CHECKED</strong>.</li>
+                                            <li>Check your <code>pg_hba.conf</code> or password.</li>
+                                        </ul>
+                                        
+                                        <div className="mt-2 text-xs font-mono bg-amber-100/50 p-2 rounded text-amber-900">
+                                            {errorMsg.replace('SSL/Auth Error: ', '')}
                                         </div>
                                     </div>
                                 </div>

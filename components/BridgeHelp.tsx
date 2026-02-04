@@ -32,14 +32,17 @@ app.post('/api/connect', async (req, res) => {
      return res.json({ success: true, message: "Bridge Active" });
   }
   
+  console.log(\`Incoming connection attempt -> Host: \${req.body.host}, User: \${req.body.user}, SSL: \${req.body.ssl}\`);
+  
   try {
     // We create the client inside try/catch to catch config errors (like invalid port)
     const client = new Client(getClientConfig(req.body));
     await client.connect();
     await client.end();
+    console.log("✅ Database Connected Successfully");
     res.json({ success: true });
   } catch (err) {
-    console.error("Connection failed:", err.message);
+    console.error("❌ Connection failed:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -55,6 +58,7 @@ app.post('/api/schemas', async (req, res) => {
     await client.end();
     res.json({ schemas: result.rows.map(r => r.schema_name) });
   } catch (err) {
+    console.error("Schema fetch failed:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
